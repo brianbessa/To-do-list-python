@@ -11,3 +11,17 @@ View Tasks: Display a list of all saved tasks.
 Remove Tasks: Select tasks to delete from the list.
 
 Data Persistence: Tasks are saved to a file (tarefas.txt) and loaded automatically when the application starts.
+
+# GUI Elements
+
+Main Window: The main application window, containing buttons to add, view, and remove tasks.
+
+# Dialog Boxes:
+
+Add Task: Allows users to add a new task, with an optional time.
+
+Remove Task: Shows a list of tasks, allowing users to select multiple tasks for removal.
+
+# File Persistence
+
+The tarefas.txt file is used to store the list of tasks, ensuring data persists across application sessions.
