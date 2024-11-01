@@ -1,19 +1,30 @@
+import sqlite3
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 
-tarefas = []
+conn = sqlite3.connect("tarefas.db")
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS tarefas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        horario TEXT
+    )
+""")
+conn.commit()
 
 def carregar_tarefas():
-    try:
-        with open("tarefas.txt", "r") as file:
-            return [linha.strip() for linha in file.readlines()]
-    except FileNotFoundError:
-        return []
+    cursor.execute("SELECT descricao, horario FROM tarefas")
+    return [f"{descricao} ({horario})" if horario else descricao for descricao, horario in cursor.fetchall()]
 
-def salvar_tarefas():
-    with open("tarefas.txt", "w") as file:
-        for tarefa in tarefas:
-            file.write(f"{tarefa}\n")
+def salvar_tarefa(descricao, horario=None):
+    cursor.execute("INSERT INTO tarefas (descricao, horario) VALUES (?, ?)", (descricao, horario))
+    conn.commit()
+
+def remover_tarefas(indices):
+    for i in indices:
+        cursor.execute("DELETE FROM tarefas WHERE id = ?", (i,))
+    conn.commit()
 
 tarefas = carregar_tarefas()
 
@@ -58,34 +69,6 @@ def adicionar_tarefas():
     spinbox_minutos = tk.Spinbox(frame_horario, from_=0, to=59, width=5, format="%02.0f", state='disabled')
     spinbox_minutos.pack(side=tk.LEFT, padx=(5, 0))
 
-    def validar_minutos():
-        minutos = int(spinbox_minutos.get())
-        horas = int(spinbox_horas.get())
-        if minutos == 0:  
-            spinbox_minutos.delete(0, 'end')
-            spinbox_minutos.insert(0, 59)
-            if horas > 0:
-                spinbox_horas.delete(0, 'end')
-                spinbox_horas.insert(0, horas - 1)
-        elif minutos == 59:  
-            spinbox_minutos.delete(0, 'end')
-            spinbox_minutos.insert(0, 0)
-            if horas < 23:
-                spinbox_horas.delete(0, 'end')
-                spinbox_horas.insert(0, horas + 1)
-
-    def validar_horas():
-        horas = int(spinbox_horas.get())
-        if horas == 0:  
-            spinbox_horas.delete(0, 'end')
-            spinbox_horas.insert(0, 23)
-        elif horas == 23:  
-            spinbox_horas.delete(0, 'end')
-            spinbox_horas.insert(0, 0)
-
-    spinbox_minutos.bind("<Button-1>", lambda event: validar_minutos())
-    spinbox_horas.bind("<Button-1>", lambda event: validar_horas())
-
     def confirmar():
         tarefa = entrada_tarefa.get()
         if tarefa:
@@ -93,11 +76,11 @@ def adicionar_tarefas():
                 horas = spinbox_horas.get()
                 minutos = spinbox_minutos.get()
                 horario = f"{horas}:{minutos}"
-                tarefas.append(f"{tarefa} ({horario})")
+                salvar_tarefa(tarefa, horario)
             else:
-                tarefas.append(tarefa)
+                salvar_tarefa(tarefa)
+            tarefas.append(f"{tarefa} ({horario})" if var_horario.get() else tarefa)
             messagebox.showinfo("Sucesso", "Tarefa adicionada com sucesso!")
-            salvar_tarefas()
             dialogo.destroy()
 
     botao_confirmar = tk.Button(dialogo, text="Confirmar", command=confirmar)
@@ -114,7 +97,6 @@ def remover_tarefa():
     dialogo = tk.Toplevel()
     dialogo.title("Remover Tarefa")
 
-    # Frame principal e canvas para a rolagem
     frame_principal = tk.Frame(dialogo)
     frame_principal.pack()
 
@@ -122,29 +104,26 @@ def remover_tarefa():
     scrollbar = tk.Scrollbar(frame_principal, orient="vertical", command=canvas.yview)
     frame = tk.Frame(canvas)
 
-    # Configurar o canvas e scrollbar
     frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.create_window((0, 0), window=frame, anchor="nw")
-
     canvas.configure(yscrollcommand=scrollbar.set)
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     var_checks = []
+    tarefas_ids = [row[0] for row in cursor.execute("SELECT id FROM tarefas").fetchall()]
 
-    for tarefa in tarefas:
+    for idx, tarefa in enumerate(tarefas):
         var = tk.BooleanVar()
         var_checks.append(var)
         checkbutton = tk.Checkbutton(frame, text=tarefa, variable=var)
         checkbutton.pack(anchor='w')
 
-    def confirmar_remocao():    
-        for i in reversed(range(len(var_checks))):
-            if var_checks[i].get():
-                tarefas.pop(i)
+    def confirmar_remocao():
+        indices_para_remover = [tarefas_ids[i] for i, var in enumerate(var_checks) if var.get()]
+        remover_tarefas(indices_para_remover)
         messagebox.showinfo("Sucesso", "Tarefa(s) removida com sucesso!")
-        salvar_tarefas()
         dialogo.destroy()
 
     botao_confirmar = tk.Button(dialogo, text="Confirmar", command=confirmar_remocao)
@@ -153,38 +132,17 @@ def remover_tarefa():
 janela = tk.Tk()
 janela.title("Todo List")
 janela.geometry("200x280")
-
-# Impede o redimensionamento da janela
 janela.resizable(False, False)
 
-botao_adicionar = tk.Button(
-    janela, 
-    text="Adicionar Tarefa", 
-    command=adicionar_tarefas, 
-    width=(25), 
-    height=(5)
-)
-
+botao_adicionar = tk.Button(janela, text="Adicionar Tarefa", command=adicionar_tarefas, width=(25), height=(5))
 botao_adicionar.pack(pady=5)
 
-botao_exibir = tk.Button(
-    janela,
-    text="Exibir Lista",
-    command=mostrar_tarefa,
-    width=(25),
-    height=(5)
-)
-
+botao_exibir = tk.Button(janela, text="Exibir Lista", command=mostrar_tarefa, width=(25), height=(5))
 botao_exibir.pack(pady=5)
 
-botao_remover = tk.Button(
-    janela,
-    text="Remover Tarefa",
-    command=remover_tarefa,
-    width=(25),
-    height=(5)
-)
-
+botao_remover = tk.Button(janela, text="Remover Tarefa", command=remover_tarefa, width=(25), height=(5))
 botao_remover.pack(pady=5)
 
 janela.mainloop()
+
+conn.close()
